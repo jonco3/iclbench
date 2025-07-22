@@ -7,7 +7,7 @@
 #include <time.h>
 #include <unistd.h>
 
-constexpr size_t Iterations = 1000000; // todo: more
+constexpr size_t Iterations = 10 * 1000 * 1000;
 
 const char* sharedPath = "/data/local/tmp/ipbench-shared";
 const size_t sharedSize = 4096;
@@ -24,8 +24,6 @@ double testLoop(SharedData* data, size_t iterations, int param, uint64_t start);
 void setCPUAffinity(int cpu);
 
 int main(int argc, char* argv[]) {
-  // todo: process args
-
   // Set up shared memory region.
 
   int fd = open("/data/local/tmp/mysharedfile", O_CREAT | O_RDWR, 0666);
@@ -71,7 +69,7 @@ int main(int argc, char* argv[]) {
 }
 
 double runOneTest(int fd, void* data, size_t iterations, int param1, int param2) {
-  // Inuit data.
+  // Init shared data.
 
   auto* sd = new (data) SharedData;
 
@@ -87,6 +85,8 @@ double runOneTest(int fd, void* data, size_t iterations, int param1, int param2)
   int param = isParent ? param1 : param2;
   uint64_t start = isParent ? 1 : 2;
   auto* resultOut = isParent ? &sd->result1 : &sd->result2;
+
+  // Run the test.
 
   *resultOut = testLoop(sd, iterations, param, start) / double(iterations);
 
@@ -120,6 +120,9 @@ double runOneTest(int fd, void* data, size_t iterations, int param1, int param2)
 }
 
 double testLoop(SharedData* data, size_t iterations, int param, uint64_t start) {
+  // Latency test, based on:
+  // https://github.com/ChipsandCheese/CnC-Tools/blob/main/CPU%20Tests/CoreCoherencyLatency/main.c#L131
+
   setCPUAffinity(param);
 
   struct timespec t0;
