@@ -19,8 +19,8 @@ struct SharedData {
 };
 static_assert(sizeof(SharedData) <= sharedSize);
 
-double runOneTest(int fd, void* data, size_t iterations, int param1, int param2);
-double testLoop(SharedData* data, size_t iterations, int param, uint64_t start);
+double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2);
+double testLoop(SharedData* data, size_t iterations, int cpu, uint64_t start);
 void setCPUAffinity(int cpu);
 
 int main(int argc, char* argv[]) {
@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
   return 0;
 }
 
-double runOneTest(int fd, void* data, size_t iterations, int param1, int param2) {
+double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
   // Init shared data.
 
   auto* sd = new (data) SharedData;
@@ -82,13 +82,13 @@ double runOneTest(int fd, void* data, size_t iterations, int param1, int param2)
   }
 
   bool isParent = pid != 0;
-  int param = isParent ? param1 : param2;
+  int cpu = isParent ? cpu1 : cpu2;
   uint64_t start = isParent ? 1 : 2;
   auto* resultOut = isParent ? &sd->result1 : &sd->result2;
 
   // Run the test.
 
-  *resultOut = testLoop(sd, iterations, param, start) / double(iterations);
+  *resultOut = testLoop(sd, iterations, cpu, start) / double(iterations);
 
   // Exit in the child.
 
@@ -119,11 +119,11 @@ double runOneTest(int fd, void* data, size_t iterations, int param1, int param2)
   return std::min(sd->result1, sd->result2);
 }
 
-double testLoop(SharedData* data, size_t iterations, int param, uint64_t start) {
+double testLoop(SharedData* data, size_t iterations, int cpu, uint64_t start) {
   // Latency test, based on:
   // https://github.com/ChipsandCheese/CnC-Tools/blob/main/CPU%20Tests/CoreCoherencyLatency/main.c#L131
 
-  setCPUAffinity(param);
+  setCPUAffinity(cpu);
 
   struct timespec t0;
   clock_gettime(CLOCK_MONOTONIC, &t0);
