@@ -26,3 +26,8 @@ Copy the binary to your Android device and run it:
  $ adb push iclbench /data/local/tmp/
  $ adb shell /data/local/tmp/iclbench
 ```
+
+Results
+-------
+
+There are [some results here](Results.md).
