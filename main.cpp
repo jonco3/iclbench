@@ -20,7 +20,7 @@ struct SharedData {
 static_assert(sizeof(SharedData) <= sharedSize);
 
 double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2);
-double testLoop(SharedData* data, size_t iterations, int cpu, uint64_t start);
+void testLoop(SharedData* data, size_t iterations, uint64_t start);
 void setCPUAffinity(int cpu);
 
 int main(int argc, char* argv[]) {
@@ -88,7 +88,19 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
 
   // Run the test.
 
-  *resultOut = testLoop(sd, iterations, cpu, start) / double(iterations);
+  setCPUAffinity(cpu);
+
+  struct timespec t0;
+  clock_gettime(CLOCK_MONOTONIC, &t0);
+
+  testLoop(sd, iterations, start);
+
+  struct timespec t1;
+  clock_gettime(CLOCK_MONOTONIC, &t1);
+  long seconds = t1.tv_sec - t0.tv_sec;
+  long nanoseconds = t1.tv_nsec - t0.tv_nsec;
+  double elapsed = seconds * 1e9 + nanoseconds;
+  *resultOut = elapsed / double(iterations);
 
   // Exit in the child.
 
@@ -119,14 +131,9 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
   return std::min(sd->result1, sd->result2);
 }
 
-double testLoop(SharedData* data, size_t iterations, int cpu, uint64_t start) {
+void testLoop(SharedData* data, size_t iterations, uint64_t start) {
   // Latency test, based on:
   // https://github.com/ChipsandCheese/CnC-Tools/blob/main/CPU%20Tests/CoreCoherencyLatency/main.c#L131
-
-  setCPUAffinity(cpu);
-
-  struct timespec t0;
-  clock_gettime(CLOCK_MONOTONIC, &t0);
 
   uint64_t current = start;
   uint64_t end = 2 * iterations;
@@ -135,14 +142,6 @@ double testLoop(SharedData* data, size_t iterations, int cpu, uint64_t start) {
       current += 2;
     }
   }
-
-  struct timespec t1;
-  clock_gettime(CLOCK_MONOTONIC, &t1);
-  long seconds = t1.tv_sec - t0.tv_sec;
-  long nanoseconds = t1.tv_nsec - t0.tv_nsec;
-  double elapsed = seconds * 1e9 + nanoseconds;
-
-  return elapsed;
 }
 
 void setCPUAffinity(int cpu) {
