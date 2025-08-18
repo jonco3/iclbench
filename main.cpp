@@ -7,10 +7,12 @@
 #include <time.h>
 #include <unistd.h>
 
-constexpr size_t Iterations = 10 * 1000 * 1000;
-
 const char* sharedPath = "/data/local/tmp/ipbench-shared";
 const size_t sharedSize = 4096;
+
+struct Options {
+  size_t iterations = 10 * 1000 * 1000;
+};
 
 struct SharedData {
   volatile uint64_t target = 0;
@@ -19,11 +21,21 @@ struct SharedData {
 };
 static_assert(sizeof(SharedData) <= sharedSize);
 
+bool parseArgs(int argc, char* argv[], Options& options);
+void printUsage();
 double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2);
 void testLoop(SharedData* data, size_t iterations, uint64_t start);
 void setCPUAffinity(int cpu);
 
 int main(int argc, char* argv[]) {
+  // Parse command line options.
+
+  Options options;
+  if (!parseArgs(argc, argv, options)) {
+    printUsage();
+    return 1;
+  }
+
   // Set up shared memory region.
 
   int fd = open("/data/local/tmp/mysharedfile", O_CREAT | O_RDWR, 0666);
@@ -58,7 +70,7 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < nprocs; j++) {
       double result = 0.0;
       if (i != j) {
-        result = runOneTest(fd, data, Iterations, i, j);
+        result = runOneTest(fd, data, options.iterations, i, j);
       }
       printf("%8.2f ", result);
     }
@@ -66,6 +78,32 @@ int main(int argc, char* argv[]) {
   }
 
   return 0;
+}
+
+bool parseArgs(int argc, char* argv[], Options& options) {
+  int i = 1;
+  while (i < argc) {
+    const char* arg = argv[i++];
+
+    if (strcmp(arg, "-i") == 0) {
+      if (i == argc) {
+        return false;
+      }
+      arg = argv[i++];
+      if (sscanf(arg, "%zu", &options.iterations) != 1) {
+        return false;
+      }
+      printf("Iterations: %zu\n", options.iterations);
+    } else {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void printUsage() {
+  fprintf(stderr, "usage: iclbench [-i ITERATIONS]\n");
 }
 
 double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
