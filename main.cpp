@@ -15,8 +15,9 @@ struct Options {
   size_t iterations = 10 * 1000 * 1000;
 };
 
-struct SharedData {
+struct SyncCASTest {
   volatile uint64_t target = 0;
+  void run(size_t iterations, bool isParent);
 };
 
 struct Results {
@@ -24,12 +25,10 @@ struct Results {
   volatile double result2 = 0.0;
 };
 
-static_assert(sizeof(SharedData) + sizeof(Results) <= sharedSize);
-
 bool parseArgs(int argc, char* argv[], Options& options);
 void printUsage();
+template <typename Test>
 double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2);
-void testLoop(SharedData* data, size_t iterations, uint64_t start);
 void setCPUAffinity(int cpu);
 
 int main(int argc, char* argv[]) {
@@ -80,7 +79,7 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < nprocs; j++) {
       double result = 0.0;
       if (i != j) {
-        result = runOneTest(fd, data, options.iterations, i, j);
+        result = runOneTest<SyncCASTest>(fd, data, options.iterations, i, j);
       }
       printf("%8.2f ", result);
     }
@@ -116,11 +115,17 @@ void printUsage() {
   fprintf(stderr, "usage: iclbench [-i ITERATIONS]\n");
 }
 
+template <typename Test>
 double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
   // Init shared data.
 
-  auto* sd = new (data) SharedData;
-  auto* results = new (sd + 1) Results;
+  if (sizeof(Test) + sizeof(Results) >= sharedSize) {
+    fprintf(stderr, "Test data too large.\n");
+    exit(1);
+  }
+
+  auto* test = new (data) Test;
+  auto* results = new (test + 1) Results;
 
   // Fork child process.
 
@@ -151,8 +156,7 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
   struct timespec t0;
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
-  uint64_t start = isParent ? 1 : 2;
-  testLoop(sd, iterations, start);
+  test->run(iterations, isParent);
 
   struct timespec t1;
   clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -191,14 +195,15 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
   return std::min(results->result1, results->result2);
 }
 
-void testLoop(SharedData* data, size_t iterations, uint64_t start) {
+void SyncCASTest::run(size_t iterations, bool isParent) {
   // Latency test, based on:
   // https://github.com/ChipsandCheese/CnC-Tools/blob/main/CPU%20Tests/CoreCoherencyLatency/main.c#L131
 
+  uint64_t start = isParent ? 1 : 2;
   uint64_t current = start;
   uint64_t end = 2 * iterations;
   while (current <= end) {
-    if (__sync_bool_compare_and_swap(&data->target, current - 1, current)) {
+    if (__sync_bool_compare_and_swap(&target, current - 1, current)) {
       current += 2;
     }
   }
