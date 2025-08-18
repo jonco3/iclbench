@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <sched.h>
+#include <sys/prctl.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -125,6 +126,16 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
   }
 
   bool isParent = pid != 0;
+
+  // Ensure the child gets killed if the parent dies.
+
+  if (!isParent) {
+    prctl(PR_SET_PDEATHSIG, SIGHUP);
+    if (getppid() == 1) {
+      exit(1);
+    }
+  }
+
   int cpu = isParent ? cpu1 : cpu2;
   uint64_t start = isParent ? 1 : 2;
   auto* resultOut = isParent ? &sd->result1 : &sd->result2;
