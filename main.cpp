@@ -17,10 +17,14 @@ struct Options {
 
 struct SharedData {
   volatile uint64_t target = 0;
+};
+
+struct Results {
   volatile double result1 = 0.0;
   volatile double result2 = 0.0;
 };
-static_assert(sizeof(SharedData) <= sharedSize);
+
+static_assert(sizeof(SharedData) + sizeof(Results) <= sharedSize);
 
 bool parseArgs(int argc, char* argv[], Options& options);
 void printUsage();
@@ -116,6 +120,7 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
   // Init shared data.
 
   auto* sd = new (data) SharedData;
+  auto* results = new (sd + 1) Results;
 
   // Fork child process.
 
@@ -136,17 +141,17 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
     }
   }
 
+  // Bind parent/child process to the requested CPU.
+
   int cpu = isParent ? cpu1 : cpu2;
-  uint64_t start = isParent ? 1 : 2;
-  auto* resultOut = isParent ? &sd->result1 : &sd->result2;
+  setCPUAffinity(cpu);
 
   // Run the test.
-
-  setCPUAffinity(cpu);
 
   struct timespec t0;
   clock_gettime(CLOCK_MONOTONIC, &t0);
 
+  uint64_t start = isParent ? 1 : 2;
   testLoop(sd, iterations, start);
 
   struct timespec t1;
@@ -154,6 +159,7 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
   long seconds = t1.tv_sec - t0.tv_sec;
   long nanoseconds = t1.tv_nsec - t0.tv_nsec;
   double elapsed = seconds * 1e9 + nanoseconds;
+  auto* resultOut = isParent ? &results->result1 : &results->result2;
   *resultOut = elapsed / double(iterations);
 
   // Exit in the child.
@@ -182,7 +188,7 @@ double runOneTest(int fd, void* data, size_t iterations, int cpu1, int cpu2) {
     }
   }
 
-  return std::min(sd->result1, sd->result2);
+  return std::min(results->result1, results->result2);
 }
 
 void testLoop(SharedData* data, size_t iterations, uint64_t start) {
