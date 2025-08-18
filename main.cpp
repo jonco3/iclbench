@@ -28,6 +28,10 @@ void testLoop(SharedData* data, size_t iterations, uint64_t start);
 void setCPUAffinity(int cpu);
 
 int main(int argc, char* argv[]) {
+  // Select line buffered output.
+
+  setvbuf(stdout, nullptr, _IOLBF, 1024);
+
   // Parse command line options.
 
   Options options;
@@ -62,6 +66,7 @@ int main(int argc, char* argv[]) {
     perror("nprocs");
     return 1;
   }
+
   printf("Number of CPU cores: %ld\n", nprocs);
 
   // Run the tests.
